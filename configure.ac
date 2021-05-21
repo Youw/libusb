@@ -31,9 +31,9 @@ dnl Library versioning
 dnl These numbers should be tweaked on every release. Read carefully:
 dnl http://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
 dnl http://sourceware.org/autobook/autobook/autobook_91.html
-lt_current=2
+lt_current=3
 lt_revision=0
-lt_age=2
+lt_age=3
 LT_LDFLAGS="-version-info ${lt_current}:${lt_revision}:${lt_age} -no-undefined"
 
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
@@ -67,6 +67,7 @@ CFLAGS="${saved_CFLAGS}"
 
 AC_DEFINE([_GNU_SOURCE], [1], [Enable GNU extensions.])
 AC_DEFINE([DEFAULT_VISIBILITY], [__attribute__ ((visibility ("default")))], [Define to the attribute for default visibility.])
+AC_DEFINE([PRINTF_FORMAT(a, b)], [__attribute__ ((__format__ (__printf__, a, b)))], [Define to the attribute for enabling parameter checks on printf-like functions.])
 
 create_import_lib=
 is_android_linux=
@@ -160,7 +161,7 @@ fi
 case $backend in
 darwin)
 	AC_CHECK_FUNCS([pthread_threadid_np])
-	LIBS="${LIBS} -lobjc -Wl,-framework,IOKit -Wl,-framework,CoreFoundation"
+	LIBS="${LIBS} -lobjc -Wl,-framework,IOKit -Wl,-framework,CoreFoundation -Wl,-framework,Security"
 	;;
 haiku)
 	LIBS="${LIBS} -lbe"
@@ -198,17 +199,37 @@ dnl headers not available on all platforms but required on others
 AC_CHECK_HEADERS([sys/time.h])
 
 if test "x$platform" = xposix; then
-	dnl the clock_gettime() function needs certain clock IDs defined
-	AC_CHECK_FUNCS([clock_gettime], [have_clock_gettime=yes], [have_clock_gettime=])
+	dnl check availability of clock_gettime()
+	if test "x$backend" = xdarwin; then
+		dnl need to verify that OS X target is 10.12 or later for clock_gettime()
+		AC_MSG_CHECKING([whether OS X target version is 10.12 or later])
+		AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
+				#include <AvailabilityMacros.h>
+				#if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_12
+				# error "Target OS X version is too old"
+				#endif
+			], [])],
+			[AC_MSG_RESULT([yes])
+			 osx_10_12_or_later=yes],
+			[AC_MSG_RESULT([no])
+			 osx_10_12_or_later=])
+		if test "x$osx_10_12_or_later" = xyes; then
+			AC_CHECK_FUNCS([clock_gettime], [have_clock_gettime=yes], [have_clock_gettime=])
+		else
+			AC_MSG_NOTICE([clock_gettime() is not available on target OS X version])
+		fi
+	else
+		AC_CHECK_FUNCS([clock_gettime], [have_clock_gettime=yes], [AC_MSG_ERROR([clock_gettime() is required on this platform])])
+	fi
+
 	if test "x$have_clock_gettime" = xyes; then
+		dnl the clock_gettime() function needs certain clock IDs defined
 		AC_CHECK_DECL([CLOCK_MONOTONIC], [], [AC_MSG_ERROR([C library headers missing definition for CLOCK_MONOTONIC])], [[#include <time.h>]])
 		dnl use the monotonic clock for condition variable timed waits if possible
 		AC_CHECK_FUNCS([pthread_condattr_setclock], [need_clock_realtime=], [need_clock_realtime=yes])
 		if test "x$need_clock_realtime" = xyes; then
 			AC_CHECK_DECL([CLOCK_REALTIME], [], [AC_MSG_ERROR([C library headers missing definition for CLOCK_REALTIME])], [[#include <time.h>]])
 		fi
-	elif test "x$backend" != xdarwin; then
-		AC_MSG_ERROR([clock_gettime() is required on this platform])
 	fi
 fi
 
@@ -325,10 +346,6 @@ AC_ARG_ENABLE([examples-build],
 	[AS_HELP_STRING([--enable-examples-build], [build example applications [default=no]])],
 	[build_examples=$enableval],
 	[build_examples=no])
-if test "x$build_examples" != xno; then
-	dnl sigaction needed for some example programs
-	AC_CHECK_FUNC([sigaction], [have_sigaction=yes], [have_sigaction=])
-fi
 
 dnl Tests build
 AC_ARG_ENABLE([tests-build],
@@ -339,7 +356,6 @@ AC_ARG_ENABLE([tests-build],
 AM_CONDITIONAL([BUILD_EXAMPLES], [test "x$build_examples" != xno])
 AM_CONDITIONAL([BUILD_TESTS], [test "x$build_tests" != xno])
 AM_CONDITIONAL([CREATE_IMPORT_LIB], [test "x$create_import_lib" = xyes])
-AM_CONDITIONAL([HAVE_SIGACTION], [test "x$have_sigaction" = xyes])
 AM_CONDITIONAL([OS_DARWIN], [test "x$backend" = xdarwin])
 AM_CONDITIONAL([OS_HAIKU], [test "x$backend" = xhaiku])
 AM_CONDITIONAL([OS_LINUX], [test "x$backend" = xlinux])

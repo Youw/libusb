@@ -83,6 +83,34 @@
 #define PTR_ALIGN(v) \
 	(((v) + (sizeof(void *) - 1)) & ~(sizeof(void *) - 1))
 
+/* Atomic operations
+ *
+ * Useful for reference counting or when accessing a value without a lock
+ *
+ * The following atomic operations are defined:
+ *   usbi_atomic_load() - Atomically read a variable's value
+ *   usbi_atomic_store() - Atomically write a new value value to a variable
+ *   usbi_atomic_inc() - Atomically increment a variable's value and return the new value
+ *   usbi_atomic_dec() - Atomically decrement a variable's value and return the new value
+ *
+ * All of these operations are ordered with each other, thus the effects of
+ * any one operation is guaranteed to be seen by any other operation.
+ */
+#ifdef _MSC_VER
+typedef volatile LONG usbi_atomic_t;
+#define usbi_atomic_load(a)	(*(a))
+#define usbi_atomic_store(a, v)	(*(a)) = (v)
+#define usbi_atomic_inc(a)	InterlockedIncrement((a))
+#define usbi_atomic_dec(a)	InterlockedDecrement((a))
+#else
+#include <stdatomic.h>
+typedef atomic_long usbi_atomic_t;
+#define usbi_atomic_load(a)	atomic_load((a))
+#define usbi_atomic_store(a, v)	atomic_store((a), (v))
+#define usbi_atomic_inc(a)	(atomic_fetch_add((a), 1) + 1)
+#define usbi_atomic_dec(a)	(atomic_fetch_add((a), -1) - 1)
+#endif
+
 /* Internal abstractions for event handling and thread synchronization */
 #if defined(PLATFORM_POSIX)
 #include "os/events_posix.h"
@@ -100,16 +128,6 @@
  *   return_type LIBUSB_CALL function_name(params);
  */
 #define API_EXPORTED LIBUSB_CALL DEFAULT_VISIBILITY
-
-/* Macro to decorate printf-like functions, in order to get
- * compiler warnings about format string mistakes.
- */
-#ifndef _MSC_VER
-#define USBI_PRINTFLIKE(formatarg, firstvararg) \
-	__attribute__ ((__format__ (__printf__, formatarg, firstvararg)))
-#else
-#define USBI_PRINTFLIKE(formatarg, firstvararg)
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -292,7 +310,7 @@ int usbi_vsnprintf(char *dst, size_t size, const char *format, va_list args);
 #endif /* defined(_MSC_VER) && (_MSC_VER < 1900) */
 
 void usbi_log(struct libusb_context *ctx, enum libusb_log_level level,
-	const char *function, const char *format, ...) USBI_PRINTFLIKE(4, 5);
+	const char *function, const char *format, ...) PRINTF_FORMAT(4, 5);
 
 #define _usbi_log(ctx, level, ...) usbi_log(ctx, level, __func__, __VA_ARGS__)
 
@@ -460,10 +478,7 @@ static inline void usbi_end_event_handling(struct libusb_context *ctx)
 }
 
 struct libusb_device {
-	/* lock protects refcnt, everything else is finalized at initialization
-	 * time */
-	usbi_mutex_t lock;
-	int refcnt;
+	usbi_atomic_t refcnt;
 
 	struct libusb_context *ctx;
 	struct libusb_device *parent_dev;
@@ -477,7 +492,7 @@ struct libusb_device {
 	unsigned long session_data;
 
 	struct libusb_device_descriptor device_descriptor;
-	int attached;
+	usbi_atomic_t attached;
 };
 
 struct libusb_device_handle {

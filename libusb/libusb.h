@@ -231,6 +231,9 @@ enum libusb_class_code {
 	/** Wireless class */
 	LIBUSB_CLASS_WIRELESS = 0xe0,
 
+	/** Miscellaneous class */
+	LIBUSB_CLASS_MISCELLANEOUS = 0xef,
+
 	/** Application class */
 	LIBUSB_CLASS_APPLICATION = 0xfe,
 
@@ -1322,6 +1325,9 @@ enum libusb_log_level {
 
 /** \ingroup libusb_lib
  *  Log callback mode.
+ *
+ *  Since version 1.0.23, \ref LIBUSB_API_VERSION >= 0x01000107
+ *
  * \see libusb_set_log_cb()
  */
 enum libusb_log_cb_mode {
@@ -1338,6 +1344,9 @@ enum libusb_log_cb_mode {
  * is a global log message
  * \param level the log level, see \ref libusb_log_level for a description
  * \param str the log message
+ *
+ * Since version 1.0.23, \ref LIBUSB_API_VERSION >= 0x01000107
+ *
  * \see libusb_set_log_cb()
  */
 typedef void (LIBUSB_CALL *libusb_log_cb)(libusb_context *ctx,
