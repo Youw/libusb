@@ -1380,7 +1380,7 @@ static const struct libusb_interface_descriptor *get_interface_descriptor_by_num
 {
   int i;
   for (i = 0; i < conf_desc->bNumInterfaces; i++) {
-    if (conf_desc->interface[i].altsetting[altsetting].bInterfaceNumber == iface) {
+    if (altsetting < conf_desc->interface[i].num_altsetting && conf_desc->interface[i].altsetting[altsetting].bInterfaceNumber == iface) {
       return &conf_desc->interface[i].altsetting[altsetting];
     }
   }
